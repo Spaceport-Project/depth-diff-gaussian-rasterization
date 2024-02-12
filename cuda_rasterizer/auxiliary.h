@@ -14,6 +14,8 @@
 
 #include "config.h"
 #include "stdio.h"
+#include <math_constants.h>
+#include <cuda_runtime.h>
 
 #define BLOCK_SIZE (BLOCK_X * BLOCK_Y)
 #define NUM_WARPS (BLOCK_SIZE/32)
@@ -75,6 +77,66 @@ __forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float
 	};
 	return transformed;
 }
+__forceinline__ __device__ float3 transformPoint4x4EquiRec(const float3& p, const float* matrix)
+{
+	
+	float4 transformed = {
+		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z + matrix[12],
+		matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z + matrix[13],
+		matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z + matrix[14],
+		matrix[3] * p.x + matrix[7] * p.y + matrix[11] * p.z + matrix[15]
+	};
+
+	float p_w = 1.0f / (transformed.w + 0.0000001f);
+	float3 proj = { transformed.x * p_w, transformed.y * p_w, transformed.z * p_w };
+
+
+	float theta = -CUDART_PI_F * proj.x ;
+	float phi = CUDART_PI_F * (0.5 - proj.y);
+	float3 transformed_equirec = {
+		-sinf(theta) * sinf(phi),
+		cosf(phi),
+		-cosf(theta) * sinf(phi),
+
+	};
+	// The code snippet from nerstudio/camera/cameras.py when equirectangular projection
+	// theta = -torch.pi * coord_stack[..., 0]  # minus sign for right-handed
+	// phi = torch.pi * (0.5 - coord_stack[..., 1])
+	// # use spherical in local camera coordinates (+y up, x=0 and z<0 is theta=0)
+	// directions_stack[..., 0][mask] = torch.masked_select(-torch.sin(theta) * torch.sin(phi), mask).float()
+	// directions_stack[..., 1][mask] = torch.masked_select(torch.cos(phi), mask).float()
+	// directions_stack[..., 2][mask] = torch.masked_select(-torch.cos(theta) * torch.sin(phi), mask).float()
+	return transformed_equirec;
+}
+
+__forceinline__ __device__ float2 transform2EquiRecProjec(const float3& p, const int W, const int H )
+{
+	float y = -p.y ;
+    float x = -p.x ;
+    float z = (p.z);
+
+    float range = sqrtf(x * x + y * y + z * z);
+    //  Getting the angle of all the Points
+    float yaw = atan2f(z, x);
+    float pitch = asinf(y / range);
+    // Get projections in image coords and normalizing
+    float u = 0.5 * (yaw /CUDART_PI_F + 1.0);
+    float v = 1.0 - (pitch + std::abs(-CUDART_PI_F/2)) / (CUDART_PI_F);
+    // Scaling as per the lidar config given
+    v *= H;
+    u *= W;
+	v = floorf(v);
+    v = fminf(float(H - 1), v);
+    v = fmaxf(0.0, v);
+
+    u = floorf(u);
+    u = fminf(float(W - 1), u);
+    u = fmaxf(0.0, u);
+
+	return float2{u, v};
+
+}
+
 
 __forceinline__ __device__ float3 transformVec4x3(const float3& p, const float* matrix)
 {

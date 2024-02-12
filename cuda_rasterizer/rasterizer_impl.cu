@@ -193,6 +193,9 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chun
 	return binning;
 }
 
+
+
+
 // Forward rendering procedure for differentiable rasterization
 // of Gaussians.
 int CudaRasterizer::Rasterizer::forward(
@@ -218,7 +221,8 @@ int CudaRasterizer::Rasterizer::forward(
 	float* out_color,
 	float* out_depth,
 	int* radii,
-	bool debug)
+	bool debug,
+	const bool equirec_flag)
 {
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
@@ -246,33 +250,65 @@ int CudaRasterizer::Rasterizer::forward(
 	}
 
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
-	CHECK_CUDA(FORWARD::preprocess(
-		P, D, M,
-		means3D,
-		(glm::vec3*)scales,
-		scale_modifier,
-		(glm::vec4*)rotations,
-		opacities,
-		shs,
-		geomState.clamped,
-		cov3D_precomp,
-		colors_precomp,
-		viewmatrix, projmatrix,
-		(glm::vec3*)cam_pos,
-		width, height,
-		focal_x, focal_y,
-		tan_fovx, tan_fovy,
-		radii,
-		geomState.means2D,
-		geomState.depths,
-		geomState.cov3D,
-		geomState.rgb,
-		geomState.conic_opacity,
-		tile_grid,
-		geomState.tiles_touched,
-		prefiltered
-	), debug)
+	if (!equirec_flag) {
+		CHECK_CUDA(FORWARD::preprocess(
+			P, D, M,
+			means3D,
+			(glm::vec3*)scales,
+			scale_modifier,
+			(glm::vec4*)rotations,
+			opacities,
+			shs,
+			geomState.clamped,
+			cov3D_precomp,
+			colors_precomp,
+			viewmatrix, projmatrix,
+			(glm::vec3*)cam_pos,
+			width, height,
+			focal_x, focal_y,
+			tan_fovx, tan_fovy,
+			radii,
+			geomState.means2D,
+			geomState.depths,
+			geomState.cov3D,
+			geomState.rgb,
+			geomState.conic_opacity,
+			tile_grid,
+			geomState.tiles_touched,
+			prefiltered
+		), debug)
+	}
+	else {
+		CHECK_CUDA(FORWARD::preprocessEquirec(
+			P, D, M,
+			means3D,
+			(glm::vec3*)scales,
+			scale_modifier,
+			(glm::vec4*)rotations,
+			opacities,
+			shs,
+			geomState.clamped,
+			cov3D_precomp,
+			colors_precomp,
+			viewmatrix, projmatrix,
+			(glm::vec3*)cam_pos,
+			width, height,
+			focal_x, focal_y,
+			tan_fovx, tan_fovy,
+			radii,
+			geomState.means2D,
+			geomState.depths,
+			geomState.cov3D,
+			geomState.rgb,
+			geomState.conic_opacity,
+			tile_grid,
+			geomState.tiles_touched,
+			prefiltered
+		), debug)
 
+
+
+	}
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
 	CHECK_CUDA(cub::DeviceScan::InclusiveSum(geomState.scanning_space, geomState.scan_size, geomState.tiles_touched, geomState.point_offsets, P), debug)
