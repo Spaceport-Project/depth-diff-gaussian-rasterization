@@ -134,15 +134,26 @@ __device__ float3 computeCov2DEquirec(const float3& mean, float focal_x, float f
 
 	
 	float txtz_abs = fabsf(txtz);
+	float tytz_abs = fabsf(tytz);
+
 	if (txtz_abs > 0.5)
 	{
-		// focal_x *= 0.6f;
-		// focal_y *= 0.6f;
-		focal_x *= 1.0f/(2*txtz_abs);
-		focal_y *= 1.0f/(2*txtz_abs);
+		focal_x *= 1.0f/(2.*txtz_abs);
+		focal_y *= 1.0f/(2.*txtz_abs);
 
-	}
-	
+	} 
+	// else if (txtz_abs > 0.6 )
+	// 	return { 0.0f, 0.0f, 0.0f };
+
+	if (tytz_abs > 0.5)
+	{
+		
+		focal_x *= 1.0f/(2.*tytz_abs);
+		focal_y *= 1.0f/(2.*tytz_abs);
+
+	} //else if (tytz_abs > 0.6 )
+	// 	return { 0.0f, 0.0f, 0.0f };
+
 	
 
 	glm::mat3 J = glm::mat3(
@@ -297,7 +308,6 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
 	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
 		return;
-	int u;
 	// If colors have been precomputed, use them, otherwise convert
 	// spherical harmonics coefficients to RGB color.
 	if (colors_precomp == nullptr)
@@ -357,11 +367,8 @@ __global__ void preprocessCUDAEquirec(int P, int D, int M,
 	
 	// Transform point by equirectangular projecting
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
-	
-
 	p_view = transformPoint4x3(p_orig, viewmatrix);
 	float2 point_image =  transform2EquiRecProjec(p_view, W, H);
-	
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
 	// from scaling and rotation parameters. 
 	const float* cov3D;
@@ -374,10 +381,10 @@ __global__ void preprocessCUDAEquirec(int P, int D, int M,
 		computeCov3D(scales[idx], scale_modifier, rotations[idx], cov3Ds + idx * 6);
 		cov3D = cov3Ds + idx * 6;
 	}
-	// Compute 2D screen-space covariance matrix
 	
+	// Compute 2D screen-space covariance matrix
 	float3 cov = computeCov2DEquirec(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
-
+	// if (cov.x == 0.0f && cov.y == 0.0f && cov.z == 0.0f ) return;
 	// Invert covariance (EWA algorithm)
 	float det = (cov.x * cov.z - cov.y * cov.y);
 	if (det == 0.0f)
