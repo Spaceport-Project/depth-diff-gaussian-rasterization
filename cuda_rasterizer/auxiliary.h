@@ -111,13 +111,14 @@ __forceinline__ __device__ float3 transformPoint4x4EquiRec(const float3& p, cons
 
 __forceinline__ __device__ float2 transform2EquiRecProjec(const float3& p, const int W, const int H )
 {
-	float y = -p.y ;
-    float x = -p.x ;
+	float y = p.y ;
+    float x = p.x ;
     float z = (p.z);
 
     float range = sqrtf(x * x + y * y + z * z);
     //  Getting the angle of all the Points
-    float yaw = atan2f(z, x);
+	float yaw = atan2f(z, x) - CUDART_PI_F/2;
+
     float pitch = asinf(y / range);
     // Get projections in image coords and normalizing
     float u = 0.5 * (yaw /CUDART_PI_F + 1.0);
@@ -128,6 +129,7 @@ __forceinline__ __device__ float2 transform2EquiRecProjec(const float3& p, const
 	v = floorf(v);
     v = fminf(float(H - 1), v);
     v = fmaxf(0.0, v);
+	// v -= 70;
 
     u = floorf(u);
     u = fminf(float(W - 1), u);
